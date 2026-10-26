@@ -29,11 +29,14 @@
 
 ## Additional Team Members
 
-Add each confirmed team member's full name and their
-actual contributions to the project.
+Nathaniel DeLeon
+Video Recording
 
 ## Video Demonstration
 
-Record each team member's actual contribution to
-planning, recording, editing, or presenting the video.
+Nathaniel DeLeon
+- Recorded and narrated the video demonstration.
+- Demonstrated the security service, heartbeat monitor, and attacker script.
+- Explained the random service failure, heartbeat detection, and spoofing attack. 
+
 
