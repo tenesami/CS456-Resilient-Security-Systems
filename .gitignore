@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+*.log
 *.swp
-*.swo
-.DS_Store
+checkpoint.json
+checkpoint.json.tmp
