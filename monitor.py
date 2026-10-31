@@ -1,14 +1,18 @@
 
-
 import socket
 import time
 import logging
 from datetime import datetime
 
+# Heartbeat monitor configuration
 HOST = "127.0.0.1"
 PORT = 9999
 TIMEOUT = 5
 
+# Mini Project 2: Standby activation configuration
+BACKUP_PORT = 10001
+
+# Log detected service failures
 logging.basicConfig(
     filename="incidents.log",
     level=logging.WARNING,
@@ -20,12 +24,47 @@ def timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def activate_backup(sock):
+    """Notify the standby service to take over."""
+
+    try:
+        sock.sendto(
+            b"ACTIVATE",
+            (HOST, BACKUP_PORT)
+        )
+
+        print(
+            f"[{timestamp()}] "
+            "Activation signal sent to standby service."
+        )
+
+        logging.warning(
+            "Standby activation signal sent."
+        )
+
+    except OSError as error:
+        print(
+            f"[{timestamp()}] "
+            f"Failed to notify standby: {error}"
+        )
+
+        logging.error(
+            f"Standby activation notification failed: {error}"
+        )
+
+
 def run_monitor():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock = socket.socket(
+        socket.AF_INET,
+        socket.SOCK_DGRAM
+    )
+
     sock.bind((HOST, PORT))
     sock.settimeout(1)
 
     print(f"[{timestamp()}] Monitor started on {HOST}:{PORT}")
+    print(f"Heartbeat timeout: {TIMEOUT} seconds")
+    print(f"Standby activation port: {BACKUP_PORT}")
     print("Waiting for heartbeats. Press Ctrl+C to stop.")
 
     last_heartbeat = None
@@ -41,30 +80,47 @@ def run_monitor():
                     last_heartbeat = time.monotonic()
 
                     if alert_sent:
-                        print(f"[{timestamp()}] Service heartbeat restored.")
+                        print(
+                            f"[{timestamp()}] "
+                            "Service heartbeat restored."
+                        )
 
                     alert_sent = False
 
                     print(
-                        f"[{timestamp()}] Heartbeat received from {address}"
+                        f"[{timestamp()}] "
+                        f"Heartbeat received from {address}"
                     )
 
             except socket.timeout:
+
                 if last_heartbeat is not None:
-                    elapsed = time.monotonic() - last_heartbeat
+                    elapsed = (
+                        time.monotonic() - last_heartbeat
+                    )
 
                     if elapsed > TIMEOUT and not alert_sent:
                         alert = (
-                            f"Service failure detected! "
+                            "Service failure detected! "
                             f"No heartbeat for {elapsed:.1f} seconds."
                         )
 
-                        print(f"[{timestamp()}] ALERT: {alert}")
+                        print(
+                            f"[{timestamp()}] ALERT: {alert}"
+                        )
+
                         logging.warning(alert)
+
                         alert_sent = True
 
+                        # Mini Project 2:
+                        # Notify standby to begin recovery
+                        activate_backup(sock)
+
     except KeyboardInterrupt:
-        print(f"\n[{timestamp()}] Monitor stopped.")
+        print(
+            f"\n[{timestamp()}] Monitor stopped."
+        )
 
     finally:
         sock.close()
