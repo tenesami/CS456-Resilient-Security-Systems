@@ -1,11 +1,15 @@
 
 import logging
+import os
+import secrets
 import socket
 import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
+
+from heartbeat import SECRET_ENV, verify_heartbeat
 
 # Heartbeat monitor configuration
 HOST = "127.0.0.1"
@@ -29,31 +33,35 @@ def timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def start_service():
-    """Launch a replacement using the shared service implementation."""
+def start_service(heartbeat_secret):
+    """Launch a monitor-owned service with its private heartbeat key."""
 
+    environment = os.environ.copy()
+    environment[SECRET_ENV] = heartbeat_secret
     try:
         process = subprocess.Popen(
             [sys.executable, str(SERVICE_SCRIPT)],
-            cwd=str(SERVICE_SCRIPT.parent)
+            cwd=str(SERVICE_SCRIPT.parent),
+            env=environment,
+            stdin=subprocess.DEVNULL
         )
     except OSError as error:
         print(
             f"[{timestamp()}] "
-            f"Failed to launch replacement service: {error}"
+            f"Failed to launch service: {error}"
         )
         logging.error(
-            f"Replacement service launch failed: {error}"
+            f"Service launch failed: {error}"
         )
         return None
 
     print(
         f"[{timestamp()}] "
-        f"Replacement service launched (PID {process.pid}); "
+        f"Service launched (PID {process.pid}); "
         "waiting for heartbeats."
     )
     logging.warning(
-        "Replacement service launched (PID %s).", process.pid
+        "Service launched (PID %s).", process.pid
     )
     return process
 
@@ -84,50 +92,26 @@ def run_monitor():
         socket.SOCK_DGRAM
     )
 
-    sock.bind((HOST, PORT))
-    sock.settimeout(1)
-
-    print(f"[{timestamp()}] Monitor started on {HOST}:{PORT}")
-    print(f"Heartbeat timeout: {TIMEOUT} seconds")
-    print(f"Replacement service: {SERVICE_SCRIPT.name}")
-    print("Waiting for heartbeats. Press Ctrl+C to stop.")
-
     last_heartbeat = None
-    alert_sent = False
+    last_sequence = 0
+    heartbeat_secret = None
+    alert_sent = True
     replacement_process = None
     replacement_started = None
     startup_timeout_reported = False
-    next_restart = None
+    next_restart = time.monotonic()
     retry_delay = INITIAL_RETRY_DELAY
 
     try:
+        sock.bind((HOST, PORT))
+        sock.settimeout(1)
+
+        print(f"[{timestamp()}] Monitor started on {HOST}:{PORT}")
+        print(f"Heartbeat timeout: {TIMEOUT} seconds")
+        print(f"Managed service: {SERVICE_SCRIPT.name}")
+        print("Starting service. Press Ctrl+C to stop.")
+
         while True:
-            # Received heartbeats clear the outage and reset retry backoff.
-            try:
-                data, address = sock.recvfrom(1024)
-                message = data.decode("utf-8")
-
-                if message == "HEARTBEAT":
-                    last_heartbeat = time.monotonic()
-
-                    if alert_sent:
-                        print(
-                            f"[{timestamp()}] "
-                            "Service heartbeat restored."
-                        )
-
-                    alert_sent = False
-                    next_restart = None
-                    retry_delay = INITIAL_RETRY_DELAY
-
-                    print(
-                        f"[{timestamp()}] "
-                        f"Heartbeat received from {address}"
-                    )
-
-            except TimeoutError:
-                pass
-
             now = time.monotonic()
 
             # Confirm child exit before releasing its handle and scheduling a retry.
@@ -167,7 +151,8 @@ def run_monitor():
                 and next_restart is not None
                 and now >= next_restart
             ):
-                replacement_process = start_service()
+                heartbeat_secret = secrets.token_hex(32)
+                replacement_process = start_service(heartbeat_secret)
                 if replacement_process is None:
                     next_restart = now + retry_delay
                     print(
@@ -179,6 +164,8 @@ def run_monitor():
                     next_restart = None
                     replacement_started = now
                     startup_timeout_reported = False
+                    last_heartbeat = None
+                    last_sequence = 0
 
             # Report a live-but-silent child once; do not replace it until it exits.
             if (
@@ -196,6 +183,28 @@ def run_monitor():
                 print(f"[{timestamp()}] ALERT: {alert}")
                 logging.warning(alert)
                 startup_timeout_reported = True
+
+            # Only the current child's authenticated heartbeats can clear an outage.
+            try:
+                data, address = sock.recvfrom(1024)
+                sequence = None
+                if replacement_process is not None and heartbeat_secret is not None:
+                    sequence = verify_heartbeat(
+                        data, heartbeat_secret, last_sequence, TIMEOUT
+                    )
+                if sequence is None:
+                    logging.warning("Rejected invalid heartbeat from %s.", address)
+                else:
+                    last_sequence = sequence
+                    last_heartbeat = time.monotonic()
+                    if alert_sent:
+                        print(f"[{timestamp()}] Service heartbeat restored.")
+                    alert_sent = False
+                    next_restart = None
+                    retry_delay = INITIAL_RETRY_DELAY
+                    print(f"[{timestamp()}] Heartbeat received from {address}")
+            except TimeoutError:
+                pass
 
     except KeyboardInterrupt:
         print(
