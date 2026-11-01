@@ -1,7 +1,7 @@
 
+import logging
 import socket
 import time
-import logging
 from datetime import datetime
 
 # Heartbeat monitor configuration
@@ -92,7 +92,7 @@ def run_monitor():
                         f"Heartbeat received from {address}"
                     )
 
-            except socket.timeout:
+            except TimeoutError:
 
                 if last_heartbeat is not None:
                     elapsed = (
