@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from checkpoint import load_checkpoint, save_checkpoint
+from heartbeat import SECRET_ENV, create_heartbeat
 
 # Heartbeat configuration from Part 1
 HOST = "127.0.0.1"
@@ -86,6 +87,14 @@ def handle_request(request, state):
 
 
 def run_service():
+    heartbeat_secret = os.environ.pop(SECRET_ENV, None)
+    if (
+        heartbeat_secret is None
+        or len(heartbeat_secret) != 64
+        or any(character not in "0123456789abcdef" for character in heartbeat_secret)
+    ):
+        raise RuntimeError("Missing or invalid heartbeat secret; start monitor.py instead.")
+
     # Restore state from a previous checkpoint
     state = load_checkpoint()
 
@@ -114,6 +123,7 @@ def run_service():
         print("Press Ctrl+C to stop.")
 
         next_heartbeat = time.monotonic()
+        heartbeat_sequence = 0
 
         while True:
 
@@ -124,8 +134,10 @@ def run_service():
                     print(f"[{timestamp()}] Simulated service failure!")
                     break
 
+                heartbeat_sequence += 1
                 heartbeat_sock.sendto(
-                    b"HEARTBEAT", (HOST, PORT)
+                    create_heartbeat(heartbeat_secret, heartbeat_sequence),
+                    (HOST, PORT)
                 )
 
                 print(f"[{timestamp()}] Heartbeat sent to monitor.")
