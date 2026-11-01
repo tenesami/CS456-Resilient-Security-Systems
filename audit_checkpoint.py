@@ -2,9 +2,12 @@ import os
 import shutil
 import sys
 
-STATE_FILE = "state.json"
-BACKUP_FILE = "state.json.audit_backup"
+from checkpoint import CHECKPOINT_FILE
 
+STATE_FILE = CHECKPOINT_FILE
+BACKUP_FILE = CHECKPOINT_FILE.with_name(
+    CHECKPOINT_FILE.name + ".audit_backup"
+)
 
 def corrupt_state():
     if not os.path.isfile(STATE_FILE):
