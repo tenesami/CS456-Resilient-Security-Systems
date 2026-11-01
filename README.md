@@ -19,6 +19,7 @@ an independent heartbeat monitor, and an adversarial audit script.
 ## Project Files
 
 - service.py: Security service with random crash simulation
+- client.py: Simulated client creating and repeatedly checking a session
 - monitor.py: Independent heartbeat monitor
 - checkpoint.py: Shared state persistence and restoration
 - attacker.py: Heartbeat spoofing attack simulation
@@ -51,23 +52,51 @@ recorded in service.pid file for future process management capability.
 
 ## Running the Project
 
-Open three terminals in Kali Linux.
+Open five terminals in Kali Linux.
 
 ### Terminal 1: Start Monitor
 
+```text
 python3 monitor.py
+```
 
-### Terminal 2: Start Security Service
+### Terminal 2: Start Backup
 
+```text
+python3 backup.py
+```
+
+The service starts and continuously checks for a state checkpoint
+to load. The service listens for a failover call from the monitor
+to activate.
+
+### Terminal 3: Start Security Service
+
+```text
 python3 service.py
+```
 
 The service sends heartbeat messages every 2 seconds.
 It uses a random probability of 0.10 per loop iteration
 to simulate unpredictable failures.
 
-### Terminal 3: Start Attack Simulation
+### Terminal 4: Start Client
 
+Start the monitor, backup, and service as above. Run:
+
+```text
+python3 client.py
+```
+
+The client logs in with the demo creds, then checks the
+active session. This updates the service request_count
+and creates checkpoint data to actually fail-over.
+
+### Terminal 4: Start Attack Simulation
+
+```text
 python3 attacker.py
+```
 
 The attacker sends forged heartbeat messages every
 2 seconds to the monitor.
@@ -108,3 +137,4 @@ The current implementation does not automatically
 stop or fence an unresponsive service before launching its replacement.
 A hung service can still hold the client port, causing the replacement
 to fail to bind. This consolidation is not yet safe failover.
+restart a failed service.
