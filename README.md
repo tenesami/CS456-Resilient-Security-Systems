@@ -50,9 +50,15 @@ successful responses are sent.
 Monitor launched instances of service are child processes. PIDs are
 recorded in service.pid file for future process management capability.
 
+The monitor never starts another replacement while its retained child is
+still alive. Monitor-owned children are killed when monitor is exited.
+
+Run monitor recovery tests with `python3 -m unittest test_monitor -v`.
+
 ## Running the Project
 
-Open five terminals in Kali Linux.
+Open three terminals for normal operation, plus an optional attack terminal
+in Kali Linux.
 
 ### Terminal 1: Start Monitor
 
@@ -60,17 +66,7 @@ Open five terminals in Kali Linux.
 python3 monitor.py
 ```
 
-### Terminal 2: Start Backup
-
-```text
-python3 backup.py
-```
-
-The service starts and continuously checks for a state checkpoint
-to load. The service listens for a failover call from the monitor
-to activate.
-
-### Terminal 3: Start Security Service
+### Terminal 2: Start Initial Security Service
 
 ```text
 python3 service.py
@@ -80,9 +76,10 @@ The service sends heartbeat messages every 2 seconds.
 It uses a random probability of 0.10 per loop iteration
 to simulate unpredictable failures.
 
-### Terminal 4: Start Client
+### Terminal 3: Start Client
 
-Start the monitor, backup, and service as above. Run:
+Start the monitor and initial service as above. The monitor launches
+replacement instances automatically. Run:
 
 ```text
 python3 client.py
@@ -92,7 +89,7 @@ The client logs in with the demo creds, then checks the
 active session. This updates the service request_count
 and creates checkpoint data to actually fail-over.
 
-### Terminal 4: Start Attack Simulation
+### Optional Terminal 4: Start Attack Simulation
 
 ```text
 python3 attacker.py
@@ -137,4 +134,3 @@ The current implementation does not automatically
 stop or fence an unresponsive service before launching its replacement.
 A hung service can still hold the client port, causing the replacement
 to fail to bind. This consolidation is not yet safe failover.
-restart a failed service.

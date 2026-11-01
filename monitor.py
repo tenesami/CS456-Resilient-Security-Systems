@@ -11,6 +11,9 @@ from pathlib import Path
 HOST = "127.0.0.1"
 PORT = 9999
 TIMEOUT = 5
+INITIAL_RETRY_DELAY = 1
+MAX_RETRY_DELAY = 30
+SHUTDOWN_TIMEOUT = 2
 
 SERVICE_SCRIPT = Path(__file__).with_name("service.py")
 
@@ -55,6 +58,26 @@ def start_service():
     return process
 
 
+def stop_service(process):
+    """Stop and reap the monitor's current child during shutdown."""
+    if process.poll() is not None:
+        return
+
+    try:
+        process.terminate()
+        try:
+            process.wait(timeout=SHUTDOWN_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=SHUTDOWN_TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        logging.error("Failed to stop service PID %s: %s", process.pid, error)
+        print(f"[{timestamp()}] Failed to stop service PID {process.pid}: {error}")
+        raise
+
+    print(f"[{timestamp()}] Service child PID {process.pid} stopped.")
+
+
 def run_monitor():
     sock = socket.socket(
         socket.AF_INET,
@@ -71,9 +94,15 @@ def run_monitor():
 
     last_heartbeat = None
     alert_sent = False
+    replacement_process = None
+    replacement_started = None
+    startup_timeout_reported = False
+    next_restart = None
+    retry_delay = INITIAL_RETRY_DELAY
 
     try:
         while True:
+            # Received heartbeats clear the outage and reset retry backoff.
             try:
                 data, address = sock.recvfrom(1024)
                 message = data.decode("utf-8")
@@ -88,6 +117,8 @@ def run_monitor():
                         )
 
                     alert_sent = False
+                    next_restart = None
+                    retry_delay = INITIAL_RETRY_DELAY
 
                     print(
                         f"[{timestamp()}] "
@@ -95,35 +126,89 @@ def run_monitor():
                     )
 
             except TimeoutError:
+                pass
 
-                if last_heartbeat is not None:
-                    elapsed = (
-                        time.monotonic() - last_heartbeat
+            now = time.monotonic()
+
+            # Confirm child exit before releasing its handle and scheduling a retry.
+            if replacement_process is not None:
+                returncode = replacement_process.poll()
+                if returncode is not None:
+                    alert = (
+                        f"Service child PID {replacement_process.pid} "
+                        f"exited with code {returncode}. "
+                        f"Retrying in {retry_delay} seconds."
+                    )
+                    print(f"[{timestamp()}] ALERT: {alert}")
+                    logging.warning(alert)
+                    replacement_process = None
+                    alert_sent = True
+                    next_restart = now + retry_delay
+                    retry_delay = min(retry_delay * 2, MAX_RETRY_DELAY)
+
+            # Report a new heartbeat outage once and schedule immediate recovery.
+            if last_heartbeat is not None and not alert_sent:
+                elapsed = now - last_heartbeat
+                if elapsed > TIMEOUT:
+                    alert = (
+                        "Service failure detected! "
+                        f"No heartbeat for {elapsed:.1f} seconds."
                     )
 
-                    if elapsed > TIMEOUT and not alert_sent:
-                        alert = (
-                            "Service failure detected! "
-                            f"No heartbeat for {elapsed:.1f} seconds."
-                        )
+                    print(f"[{timestamp()}] ALERT: {alert}")
+                    logging.warning(alert)
+                    alert_sent = True
+                    next_restart = now
 
-                        print(
-                            f"[{timestamp()}] ALERT: {alert}"
-                        )
+            # Launch when the retry is due, but only if no retained child is alive.
+            if (
+                alert_sent
+                and replacement_process is None
+                and next_restart is not None
+                and now >= next_restart
+            ):
+                replacement_process = start_service()
+                if replacement_process is None:
+                    next_restart = now + retry_delay
+                    print(
+                        f"[{timestamp()}] Retrying service launch "
+                        f"in {retry_delay} seconds."
+                    )
+                    retry_delay = min(retry_delay * 2, MAX_RETRY_DELAY)
+                else:
+                    next_restart = None
+                    replacement_started = now
+                    startup_timeout_reported = False
 
-                        logging.warning(alert)
-
-                        alert_sent = True
-
-                        start_service()
+            # Report a live-but-silent child once; do not replace it until it exits.
+            if (
+                alert_sent
+                and replacement_process is not None
+                and replacement_started is not None
+                and now - replacement_started > TIMEOUT
+                and not startup_timeout_reported
+            ):
+                alert = (
+                    f"Service child PID {replacement_process.pid} is still "
+                    "running without a recovery heartbeat. Waiting for "
+                    "confirmed exit before launching another replacement."
+                )
+                print(f"[{timestamp()}] ALERT: {alert}")
+                logging.warning(alert)
+                startup_timeout_reported = True
 
     except KeyboardInterrupt:
         print(
             f"\n[{timestamp()}] Monitor stopped."
         )
 
+    # Stop and wait for the retained child; always close the monitor socket.
     finally:
-        sock.close()
+        try:
+            if replacement_process is not None:
+                stop_service(replacement_process)
+        finally:
+            sock.close()
 
 
 if __name__ == "__main__":
