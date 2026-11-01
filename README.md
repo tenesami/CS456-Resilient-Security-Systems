@@ -21,6 +21,7 @@ an independent heartbeat monitor, and an adversarial audit script.
 - service.py: Security service with random crash simulation
 - client.py: Simulated client creating and repeatedly checking a session
 - monitor.py: Independent heartbeat monitor
+- checkpoint.py: Shared state persistence and restoration
 - attacker.py: Heartbeat spoofing attack simulation
 - CONTRIBUTIONS.md: Team member contributions
 - incidents.log: Timestamped failure records
@@ -38,6 +39,16 @@ failure alert when no heartbeat arrives for more than
 
 The monitor operates independently and continues running
 even when the security service terminates.
+
+When a heartbeat timeout is detected, the monitor launches a
+new instance of service.py using the same Python interpreter.
+Every service instance restores the shared checkpoint, binds the
+client endpoint at 127.0.0.1:10000, and uses the same request,
+heartbeat, and checkpoint logic. State changes are saved before
+successful responses are sent.
+
+Monitor launched instances of service are child processes. PIDs are
+recorded in service.pid file for future process management capability.
 
 ## Running the Project
 
@@ -123,4 +134,7 @@ This is an educational prototype running on the local
 loopback interface, not a production security system.
 The monitor does not authenticate heartbeat senders.
 The current implementation does not automatically
+stop or fence an unresponsive service before launching its replacement.
+A hung service can still hold the client port, causing the replacement
+to fail to bind. This consolidation is not yet safe failover.
 restart a failed service.
