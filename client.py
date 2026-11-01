@@ -95,7 +95,7 @@ def run_client(host=HOST, port=SERVICE_PORT, interval=INTERVAL, timeout=TIMEOUT)
                     f"request_count={status['request_count']}"
                 )
 
-            except (socket.timeout, ConnectionRefusedError, ConnectionResetError) as error:
+            except (TimeoutError, ConnectionRefusedError, ConnectionResetError) as error:
                 unavailable = True
                 print(
                     f"[{timestamp()}] Service temporarily unavailable: {error}. "

@@ -5,7 +5,7 @@ import time
 import uuid
 from datetime import datetime
 
-from checkpoint import save_checkpoint, load_checkpoint
+from checkpoint import load_checkpoint, save_checkpoint
 
 # Heartbeat configuration from Part 1
 HOST = "127.0.0.1"
@@ -129,7 +129,7 @@ def run_service():
             try:
                 data, address = client_sock.recvfrom(4096)
 
-            except socket.timeout:
+            except TimeoutError:
                 continue
 
             try:
