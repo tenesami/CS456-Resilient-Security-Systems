@@ -1,11 +1,13 @@
 import json
+import os
 import random
 import socket
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 
-from checkpoint import save_checkpoint, load_checkpoint
+from checkpoint import load_checkpoint, save_checkpoint
 
 # Heartbeat configuration from Part 1
 HOST = "127.0.0.1"
@@ -15,6 +17,7 @@ FAILURE_PROBABILITY = 0.10
 
 # Client communication
 SERVICE_PORT = 10000
+PID_FILE = Path(__file__).with_name("service.pid")
 
 
 def timestamp():
@@ -94,18 +97,24 @@ def run_service():
         socket.AF_INET, socket.SOCK_DGRAM
     )
 
-    client_sock.bind((HOST, SERVICE_PORT))
-    client_sock.settimeout(0.2)
-
-    print(f"[{timestamp()}] Security service started.")
-    print(f"Client service listening on {HOST}:{SERVICE_PORT}")
-    print(f"Sending heartbeats every {HEARTBEAT_INTERVAL} seconds.")
-    print(f"Restored sessions: {len(state['sessions'])}")
-    print("Press Ctrl+C to stop.")
-
-    next_heartbeat = time.monotonic()
-
     try:
+        client_sock.bind((HOST, SERVICE_PORT))
+        client_sock.settimeout(0.2)
+
+        pid = os.getpid()
+        temp_pid_file = PID_FILE.with_suffix(".pid.tmp")
+        temp_pid_file.write_text(f"{pid}\n", encoding="utf-8")
+        os.replace(temp_pid_file, PID_FILE)
+
+        print(f"[{timestamp()}] Security service started (PID {pid}).")
+        print(f"PID recorded in {PID_FILE}")
+        print(f"Client service listening on {HOST}:{SERVICE_PORT}")
+        print(f"Sending heartbeats every {HEARTBEAT_INTERVAL} seconds.")
+        print(f"Restored sessions: {len(state['sessions'])}")
+        print("Press Ctrl+C to stop.")
+
+        next_heartbeat = time.monotonic()
+
         while True:
 
             # Preserve random crash behavior from Part 1
@@ -129,7 +138,7 @@ def run_service():
             try:
                 data, address = client_sock.recvfrom(4096)
 
-            except socket.timeout:
+            except TimeoutError:
                 continue
 
             try:
@@ -171,4 +180,3 @@ def run_service():
 
 if __name__ == "__main__":
     run_service()
-

@@ -1,16 +1,18 @@
 
-import socket
-import time
 import logging
+import socket
+import subprocess
+import sys
+import time
 from datetime import datetime
+from pathlib import Path
 
 # Heartbeat monitor configuration
 HOST = "127.0.0.1"
 PORT = 9999
 TIMEOUT = 5
 
-# Mini Project 2: Standby activation configuration
-BACKUP_PORT = 10001
+SERVICE_SCRIPT = Path(__file__).with_name("service.py")
 
 # Log detected service failures
 logging.basicConfig(
@@ -24,33 +26,33 @@ def timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def activate_backup(sock):
-    """Notify the standby service to take over."""
+def start_service():
+    """Launch a replacement using the shared service implementation."""
 
     try:
-        sock.sendto(
-            b"ACTIVATE",
-            (HOST, BACKUP_PORT)
+        process = subprocess.Popen(
+            [sys.executable, str(SERVICE_SCRIPT)],
+            cwd=str(SERVICE_SCRIPT.parent)
         )
-
-        print(
-            f"[{timestamp()}] "
-            "Activation signal sent to standby service."
-        )
-
-        logging.warning(
-            "Standby activation signal sent."
-        )
-
     except OSError as error:
         print(
             f"[{timestamp()}] "
-            f"Failed to notify standby: {error}"
+            f"Failed to launch replacement service: {error}"
         )
-
         logging.error(
-            f"Standby activation notification failed: {error}"
+            f"Replacement service launch failed: {error}"
         )
+        return None
+
+    print(
+        f"[{timestamp()}] "
+        f"Replacement service launched (PID {process.pid}); "
+        "waiting for heartbeats."
+    )
+    logging.warning(
+        "Replacement service launched (PID %s).", process.pid
+    )
+    return process
 
 
 def run_monitor():
@@ -64,7 +66,7 @@ def run_monitor():
 
     print(f"[{timestamp()}] Monitor started on {HOST}:{PORT}")
     print(f"Heartbeat timeout: {TIMEOUT} seconds")
-    print(f"Standby activation port: {BACKUP_PORT}")
+    print(f"Replacement service: {SERVICE_SCRIPT.name}")
     print("Waiting for heartbeats. Press Ctrl+C to stop.")
 
     last_heartbeat = None
@@ -92,7 +94,7 @@ def run_monitor():
                         f"Heartbeat received from {address}"
                     )
 
-            except socket.timeout:
+            except TimeoutError:
 
                 if last_heartbeat is not None:
                     elapsed = (
@@ -113,9 +115,7 @@ def run_monitor():
 
                         alert_sent = True
 
-                        # Mini Project 2:
-                        # Notify standby to begin recovery
-                        activate_backup(sock)
+                        start_service()
 
     except KeyboardInterrupt:
         print(
@@ -128,4 +128,3 @@ def run_monitor():
 
 if __name__ == "__main__":
     run_monitor()
-

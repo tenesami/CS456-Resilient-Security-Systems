@@ -4,3 +4,5 @@ __pycache__/
 *.swp
 checkpoint.json
 checkpoint.json.tmp
+service.pid
+service.pid.tmp
