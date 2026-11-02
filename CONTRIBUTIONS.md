@@ -1,5 +1,5 @@
 
-# CS456 Mini Group Project 1
+# CS456 Mini Group Project 1: Parts 1 and 2
 ## Team Contributions
 
 ### Tesfaye Atomsa
@@ -29,7 +29,7 @@
 
 ## Additional Team Members
 
-Nathaniel DeLeon
+### Nathaniel DeLeon
 Video Recording
 
 ## Video Demonstration
@@ -37,6 +37,22 @@ Video Recording
 Nathaniel DeLeon
 - Recorded and narrated the video demonstration.
 - Demonstrated the security service, heartbeat monitor, and attacker script.
-- Explained the random service failure, heartbeat detection, and spoofing attack. 
+- Explained the random service failure, heartbeat detection, and spoofing attack.
+
+**Adversarial Testing**
+- Created "audit_checkpoint." to test checkpoint corruption and restoration.
+- Created "audit_false_failover.py" to simulate missing heartbeats while the primary service is still running.
+- Submitted both adversarial scripts through separate GitHub pull requests.
+- Investigated a heartbeat permission error during false failover testing and updated the script to block incoming packets instead.
+
+**Code Review and Collaboration**
+- Reviewed and merged pull requests for the updated recovery implementation.
+- Helped integrate changes into the main repository.
+- Resolved a README merge conflict.
+
+**Documentation and Demonstration**
+- Documented the adversarial testing scripts and their purpose.
+- Responsible for recording and narrating the final video demonstration.
+- Responsible for submitting the completed group assignment through Canvas.
 
 
