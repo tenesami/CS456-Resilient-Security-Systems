@@ -144,3 +144,71 @@ The current implementation does not automatically stop or fence an
 unresponsive service. A hung child is reported but is not replaced until
 its exit is confirmed, avoiding duplicate monitor-owned instances.
 This is not yet safe failover.
+
+Part 2 - Adversarial Testing
+
+Two adversarial scripts were created to test the recovery system against false failover and checkpoint corruption.
+
+Test 1: False Failover
+
+Script: audit_false_failover.py
+
+The script temporarily blocks incoming UDP heartbeat packets on port 9999 for eight seconds while the primary service remains running.
+
+Run the attack in Kali Linux:
+
+sudo python3 audit_false_failover.py
+
+Results: PASSED
+
+The monitor detected missing heartbeats after approximately five seconds. However, it recognized that the original service process was still running and waited for a confirmed exit instead of launching another primary.
+
+After the attack ended, heartbeat communication resumed. The client continued using its existing authentication session, and only one service process was observed.
+
+The test did not produce a split-brain condition.
+
+Test 2: Checkpoint Corruption
+
+Script: audit_checkpoint.py
+
+This script creates a backup of the existing checkpoint before replacing its contents with invalid JSON data.
+
+To corrupt the checkpoint, stop the monitor and run:
+
+python3 audit_checkpoint.py corrupt
+
+Restart the monitor to observe how the service handles the corrupted checkpoint.
+
+To restore the original checkpoint, stop the monitor again and run:
+
+python3 audit_checkpoint.py restore
+
+The monitor can then be restarted normally.
+
+Results: PARTIALLY SUCCESSFUL
+
+The service correctly detected the corrupted checkpoint and rejected the invalid JSON data.
+
+The monitor detected that the service exited and attempted to restart it multiple times. However, each attempt failed because the checkpoint was still corrupted.
+
+After manually restoring the original checkpoint, the service started successfully and restored the existing authentication session.
+
+The client confirmed that the original session remained active and continued processing requests.
+
+Adversarial Testing Summary
+
+The false failover test demonstrated that the monitor avoids launching a conflicting primary when heartbeats are interrupted but the original process remains alive.
+
+The checkpoint corruption test demonstrated that invalid checkpoint data is detected rather than silently accepted.
+
+However, checkpoint corruption prevents automatic recovery until the original checkpoint is restored.
+
+These results demonstrate the system's ability to prevent the tested split-brain condition and detect damaged state, while also identifying a limitation in automatic recovery.
+
+Recovery Limitations
+
+The monitor does not automatically terminate an unresponsive service that remains running. This helps prevent conflicting primary processes but may delay recovery from a hung process.
+
+The recovery system also depends on a valid checkpoint. If the checkpoint becomes corrupted, the service cannot automatically restore its previous state.
+
+These limitations would need to be addressed before using this architecture in a production environment.
