@@ -6,3 +6,4 @@ checkpoint.json
 checkpoint.json.tmp
 service.pid
 service.pid.tmp
+checkpoint.json.audit_backup
