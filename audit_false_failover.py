@@ -10,8 +10,8 @@ def change_firewall(action):
     command = [
         "iptables",
         action,
-        "OUTPUT",
-        "-o", "lo",
+        "INPUT",
+        "-i", "lo",
         "-p", "udp",
         "--dport", str(PORT),
         "-j", "DROP"
